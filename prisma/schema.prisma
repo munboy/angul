@@ -1,0 +1,243 @@
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+
+  users User[]
+
+  @@map("roles")
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roleId Int
+  role   Role @relation(fields: [roleId], references: [id])
+
+  favorites              Favorite[]
+  watchedMovies          WatchedMovie[]
+  preferences            UserPreference[]
+  recommendationSessions RecommendationSession[]
+  adminActions           AdminActionLog[]        @relation("AdminActions")
+
+  @@map("users")
+}
+
+model Movie {
+  id                Int       @id @default(autoincrement())
+  tmdbId            Int       @unique
+  title             String
+  titleEn           String?
+  originalTitle     String?
+  overview          String?
+  overviewEn        String?
+  posterPath        String?
+  posterPathEn      String?
+  backdropPath      String?
+  backdropPathEn    String?
+  voteAverage       Float     @default(0)
+  voteCount         Int       @default(0)
+  popularity        Float     @default(0)
+  releaseDate       DateTime?
+  originalLanguage  String?
+  runtime           Int?
+  syncedAt          DateTime  @default(now())
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  genres                MovieGenre[]
+  favorites             Favorite[]
+  watchedBy             WatchedMovie[]
+  recommendationResults RecommendationResult[]
+
+  @@map("movies")
+}
+
+model Genre {
+  id     Int    @id @default(autoincrement())
+  tmdbId Int    @unique
+  name   String
+
+  movies      MovieGenre[]
+  preferences UserPreference[]
+
+  @@map("genres")
+}
+
+model MovieGenre {
+  movieId Int
+  genreId Int
+
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@id([movieId, genreId])
+  @@map("movie_genres")
+}
+
+model Favorite {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+
+  userId  Int
+  movieId Int
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("favorites")
+}
+
+model WatchedMovie {
+  id        Int      @id @default(autoincrement())
+  watchedAt DateTime @default(now())
+
+  userId  Int
+  movieId Int
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  movie Movie @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, movieId])
+  @@map("watched_movies")
+}
+
+model UserPreference {
+  id     Int   @id @default(autoincrement())
+  weight Float @default(1.0)
+
+  userId  Int
+  genreId Int
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  genre Genre @relation(fields: [genreId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, genreId])
+  @@map("user_preferences")
+}
+
+model RecommendationSession {
+  id           Int      @id @default(autoincrement())
+  entryType    String
+  status       String   @default("pending")
+  providerUsed String?
+  isFallback   Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  requests   RecommendationRequest[]
+  providerLogs AiProviderLog[]
+
+  @@map("recommendation_sessions")
+}
+
+model RecommendationRequest {
+  id                  Int      @id @default(autoincrement())
+  scenarioKey         String?
+  moodInput           String?
+  freeTextPrompt      String?
+  resolvedConstraints Json?
+  createdAt           DateTime @default(now())
+
+  sessionId   Int
+  session     RecommendationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  genreId     Int?
+  seedMovieId Int?
+
+  results RecommendationResult[]
+
+  @@map("recommendation_requests")
+}
+
+model RecommendationResult {
+  id          Int     @id @default(autoincrement())
+  explanation String?
+  position    Int
+
+  requestId Int
+  movieId   Int
+
+  request RecommendationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  movie   Movie                 @relation(fields: [movieId], references: [id], onDelete: Cascade)
+
+  @@map("recommendation_results")
+}
+
+model AiProviderLog {
+  id           Int      @id @default(autoincrement())
+  provider     String
+  latencyMs    Int?
+  status       String
+  errorMessage String?
+  createdAt    DateTime @default(now())
+
+  sessionId Int
+  session   RecommendationSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("ai_provider_logs")
+}
+
+model SyncJob {
+  id             Int       @id @default(autoincrement())
+  type           String
+  status         String    @default("running")
+  itemsTotal     Int       @default(0)
+  itemsProcessed Int       @default(0)
+  itemsFailed    Int       @default(0)
+  triggeredBy    String    @default("schedule")
+  startedAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  items SyncJobItem[]
+
+  @@map("sync_jobs")
+}
+
+model SyncJobItem {
+  id           Int     @id @default(autoincrement())
+  tmdbMovieId  Int
+  status       String
+  errorMessage String?
+
+  syncJobId Int
+  syncJob   SyncJob @relation(fields: [syncJobId], references: [id], onDelete: Cascade)
+
+  @@map("sync_job_items")
+}
+
+model AdminActionLog {
+  id         Int      @id @default(autoincrement())
+  action     String
+  targetType String?
+  targetId   Int?
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  adminUserId Int
+  admin       User @relation("AdminActions", fields: [adminUserId], references: [id])
+
+  @@map("admin_action_logs")
+}
+
